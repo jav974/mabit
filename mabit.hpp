@@ -99,8 +99,8 @@ namespace Mabit
 
       if (_sign != other._sign)
 	return false;
-
-      if (used_bits() != other.used_bits())
+      
+      if (used_words() != other.used_words())
 	return false;
 
       for (auto i = _set.begin(), j = other._set.begin(); i != _set.end() && j != other._set.end(); ++i, ++j)
@@ -126,21 +126,27 @@ namespace Mabit
       if (!_sign && other._sign)
 	return true;
 
-      msize_t			offset = used_words();
-      const msize_t		other_words = other.used_words();
+      msize_t			words = used_words();
+      const msize_t		o_words = other.used_words();
 
-      if (!offset)
+      if (!words && !o_words)
 	return true;
-      if (offset > other_words)
+
+      // If we are both negative and i have more bits than the other, then i'm smaller than him
+      // Or if we are both positive and i have less bits than the other, then i'm smaller than him
+      if ((!_sign && words > o_words) || (_sign && words < o_words))
+	return true;
+      
+      // If we are both negative and i have less bits than the other, then i'm bigger than him
+      // Or if we are both positive and i have more bits than the other, then i'm bigger than him
+      if ((!_sign && words < o_words) || (_sign && words > o_words))
 	return false;
-      if (offset < other_words)
-	return true;
-
-      for (--offset; offset > 0; --offset)
+      
+      for (--words; words > 0; --words)
 	{
-	  if (_set[offset] == other._set[offset])
+	  if (_set[words] == other._set[words])
 	    continue;
-	  return _set[offset] < other._set[offset];
+	  return _set[words] < other._set[words];
 	}
       return _set[0] <= other._set[0];
     }
@@ -176,6 +182,16 @@ namespace Mabit
       return mabit_t(*this) += other;
     }
 
+    mabit_t&			operator ++ ()
+    {
+      add(0, 1, _sign);
+
+      if (!_sign && !any())
+	_sign = true;
+
+      return *this;
+    }
+
     mabit_t&			operator -= (const mabit_t& other)
     {
       addition(*this, other, false);
@@ -185,6 +201,12 @@ namespace Mabit
     mabit_t			operator - (const mabit_t& other) const
     {
       return mabit_t(*this) -= other;
+    }
+
+    mabit_t&			operator -- ()
+    {
+      *this -= 1;
+      return *this;
     }
 
     mabit_t&			operator *= (const mabit_t& other)
@@ -539,12 +561,12 @@ namespace Mabit
       if (!_sign)
 	{
 	  if (ret)
-	    --ret;		// Make ret an index for _set
+	    --ret;
 
-	  if (!_set[ret])	// If 0
-	    ++ret;		// Add 1 to the final result
+	  if (!get_bit(_set[ret], _set.BITS_IN_WORD - 1))
+	    ++ret;
 
-	  ++ret;		// transform index to real number
+	  ++ret;
 	}
       return ret;
     }
@@ -649,7 +671,6 @@ namespace Mabit
 	}
       return ret;
     }
-
 
     /**
      **	\brief
@@ -884,21 +905,24 @@ namespace Mabit
       if (!dividend.any())
 	return ;
 
+      const msize_t		divisor_bits = divisor.used_bits();
+
       // If divisor == 0, then throw an exception
-      if (!divisor.any())
+      if (!divisor_bits)
 	return ;
 	//throw std::exception("Mabit: Division by zero");
 			
       // For optimization purpose only
       if (div_or_mod && divisor.is_power_of_2())
 	{ 
-	  dividend >>= (divisor.used_bits() - 1);
+	  dividend >>= (divisor_bits - 1);
 	  return ;
 	}
 
       mabit_t			tmpdividend(dividend);
       mabit_t			tmpdivisor;
       msize_t			quotient_shift;
+      msize_t			tmpdividend_bits;
 
       // Calculates the secure size for tmpdividend and quotient
       // so that left shifting the bits of these 2 will always return the expected value
@@ -927,7 +951,7 @@ namespace Mabit
 	      return ;
 	    }
 
-	  const msize_t		tmpdividend_bits = tmpdividend.used_bits();
+	  tmpdividend_bits = tmpdividend.used_bits();
 
 	  // Sets tmpdivisor to real divisor
 	  tmpdivisor = divisor;
@@ -935,7 +959,7 @@ namespace Mabit
 	  tmpdivisor.resize(word_ceil(tmpdividend_bits + 1));
 				
 	  // Calculates quotient_shift
-	  quotient_shift = tmpdividend_bits - divisor.used_bits();
+	  quotient_shift = tmpdividend_bits - divisor_bits;
 
 	  if (quotient_shift > 0)
 	    --quotient_shift;
