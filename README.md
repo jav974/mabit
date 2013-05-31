@@ -7,15 +7,15 @@ As such it can act like a primitive integer and supports the following operators
 
 Arithmetic Operators :
 
-  +  +=  -   -=  *   *=  /   /=  %   %=
+   +  +=  -   -=  *   *=  /   /=  %   %=
   
 Bitwise operators :
 
-  ~  &   &=   |  |=  ^   ^=   <<  <<=   >>   >>=
+   ~  &   &=   |  |=  ^   ^=   <<  <<=   >>   >>=
   
 Comparison operators :
 
-  ==   !=  <   <=   >   >=
+   ==   !=  <   <=   >   >=
   
 Since mabit simply holds an array of arbitrary type of unsigned integer, you can simply have access to each cell :
 
