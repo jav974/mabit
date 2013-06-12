@@ -46,12 +46,10 @@ Since mabit simply holds an array of arbitrary type of unsigned integer, you can
   []
   
 
-mabit has to be templated on an unsigned integer (char, short, int long) except unsigned long long !
+mabit has to be templated on an unsigned integer (char, short, int) except for those holding >= 64bits !
 
 e.g : 
   // mabit < unsigned char >  xxx(-42);
-  
-The main goal behind that was to manipulate strings with more ease
 
 Further description is coming.
 
