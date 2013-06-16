@@ -2,33 +2,29 @@
 #define MABIT_HPP
 
 #include <iostream>
-#include <string>
 #include <type_traits>
 #include <algorithm>
-#include "mabitset_ctrl.hpp"
+#include <utility>
+#include "mabitset.hpp"
 
 namespace Mabit
 {
-  enum base_t
-    {
-      BIN,
-      DEC,
-      OCT,
-      HEX
-    };
+  template<typename word_t>
+  class mabit_stream;
 
   template<typename word_t>
   class mabit
   {
   public:
     static_assert(std::is_unsigned<word_t>::value, "Mabit: template parameter `word_t` should be unsigned.");
+    static_assert(sizeof(word_t) < sizeof(unsigned long long), "Mabit: sizeof `word_t` should be < 64 bits");
 
     typedef typename mabit_traits<word_t>::msize_t	msize_t;
     typedef typename mabit_traits<word_t>::word_r	word_r;
     typedef typename mabit_traits<word_t>::word_cr	word_cr;
 
     typedef mabit<word_t>				mabit_t;
-    typedef mabitset_ctrl<word_t>			set_t;
+    typedef mabitset<word_t>				set_t;
 
     static const msize_t				MIN_SIZE = sizeof(unsigned long long) / sizeof(word_t);
     static const word_t					WORD_MAX = ~static_cast<word_t>(0);
@@ -38,11 +34,11 @@ namespace Mabit
       resize(MIN_SIZE);
     }
 
-    mabit(const mabit_t& other) : _set(other._set), _sign(other._sign)
+    mabit(const mabit_t& other) : _sign(other._sign), _set(other._set)
     {
     }
 
-    mabit(mabit_t&& other) : _set(std::move(other._set)), _sign(other._sign)
+    mabit(mabit_t&& other) : _sign(other._sign), _set(std::move(other._set))
     {
     }
 
@@ -100,7 +96,7 @@ namespace Mabit
       if (_sign != other._sign)
 	return false;
 
-      if (used_bits() != other.used_bits())
+      if (used_words() != other.used_words())
 	return false;
 
       for (auto i = _set.begin(), j = other._set.begin(); i != _set.end() && j != other._set.end(); ++i, ++j)
@@ -126,21 +122,23 @@ namespace Mabit
       if (!_sign && other._sign)
 	return true;
 
-      msize_t			offset = used_words();
-      const msize_t		other_words = other.used_words();
+      msize_t			words = used_words();
+      const msize_t		o_words = other.used_words();
 
-      if (!offset)
+      if (!words && !o_words)
 	return true;
-      if (offset > other_words)
+
+      if ((!_sign && words > o_words) || (_sign && words < o_words))
+	return true;
+
+      if ((!_sign && words < o_words) || (_sign && words > o_words))
 	return false;
-      if (offset < other_words)
-	return true;
 
-      for (--offset; offset > 0; --offset)
+      for (--words; words > 0; --words)
 	{
-	  if (_set[offset] == other._set[offset])
+	  if (_set[words] == other._set[words])
 	    continue;
-	  return _set[offset] < other._set[offset];
+	  return _set[words] < other._set[words];
 	}
       return _set[0] <= other._set[0];
     }
@@ -176,6 +174,16 @@ namespace Mabit
       return mabit_t(*this) += other;
     }
 
+    mabit_t&			operator ++ ()
+    {
+      add(0, 1, _sign);
+
+      if (!_sign && !any())
+	_sign = true;
+
+      return *this;
+    }
+
     mabit_t&			operator -= (const mabit_t& other)
     {
       addition(*this, other, false);
@@ -187,13 +195,18 @@ namespace Mabit
       return mabit_t(*this) -= other;
     }
 
+    mabit_t&			operator -- ()
+    {
+      return *this -= 1;
+    }
+
     mabit_t&			operator *= (const mabit_t& other)
     {
       const bool		final_sign = _sign == other._sign;
-			
+
       if (!_sign)
 	negate();
-			
+
       multiplication(*this, other);
 
       if (!final_sign)
@@ -277,7 +290,7 @@ namespace Mabit
       return *this;
     }
 
-    mabit_t			operator & (const mabit_t& other)
+    mabit_t			operator & (const mabit_t& other) const
     {
       return mabit_t(*this) &= other;
     }
@@ -288,7 +301,7 @@ namespace Mabit
       return *this;
     }
 
-    mabit_t			operator | (const mabit_t& other)
+    mabit_t			operator | (const mabit_t& other) const
     {
       return mabit_t(*this) |= other;
     }
@@ -299,7 +312,7 @@ namespace Mabit
       return *this;
     }
 
-    mabit_t			operator ^ (const mabit_t& other)
+    mabit_t			operator ^ (const mabit_t& other) const
     {
       return mabit_t(*this) ^= other;
     }
@@ -310,7 +323,7 @@ namespace Mabit
       return *this;
     }
 
-    mabit_t			operator << (const msize_t shift)
+    mabit_t			operator << (const msize_t shift) const
     {
       return mabit_t(*this) <<= shift;
     }
@@ -321,7 +334,7 @@ namespace Mabit
       return *this;
     }
 
-    mabit_t			operator >> (const msize_t shift)
+    mabit_t			operator >> (const msize_t shift) const
     {
       return mabit_t(*this) >>= shift;
     }
@@ -355,16 +368,12 @@ namespace Mabit
 
       word_out			ret = 0;
 
-      if ((sizeof(word_out)) == sizeof(word_t))
-	ret = simulate_abs(0);
-      else
+      for (msize_t i = word_ceil(bits); i > 0; --i)
 	{
-	  for (msize_t words = word_ceil(bits); words > 0; --words)
-	    {
-	      ret <<= _set.BITS_IN_WORD;
-	      ret += simulate_abs(words - 1);
-	    }
+	  ret <<= _set.BITS_IN_WORD;
+	  ret |= simulate_abs(i - 1);
 	}
+
       if (!_sign && std::is_signed<word_out>::value)
 	ret = -ret;
       return ret;
@@ -378,6 +387,11 @@ namespace Mabit
     long			to_long() const
     {
       return to_integer<long>();
+    }
+
+    int				to_int() const
+    {
+      return to_integer<int>();
     }
 
     short			to_short() const
@@ -398,6 +412,11 @@ namespace Mabit
     unsigned long		to_ulong() const
     {
       return to_integer<unsigned long>();
+    }
+
+    unsigned int		to_uint() const
+    {
+      return to_integer<unsigned int>();
     }
 
     unsigned short		to_ushort() const
@@ -487,17 +506,18 @@ namespace Mabit
 
       const word_t		w = _set[words - 1];
 
+      // Word: WORD_MAX OR POWER_OF_TWO
       if (w == WORD_MAX || (_sign && !(w & (w - 1)))
-	  || (!_sign && !static_cast<word_t>((~w + 1) & ((~w + 1) - 1)))) // Word: WORD_MAX OR POWER_OF_TWO
+	  || (!_sign && !static_cast<word_t>((~w + 1) & ((~w + 1) - 1))))
 	{
 	  if (words == 1)
 	    return w != WORD_MAX;
 
-	  msize_t		i = words - 2;
+	  words -= 2;
 
-	  for (; i > 0 && !_set[i]; --i) ;
+	  for (; words > 0 && !_set[words]; --words) ;
 
-	  if (!i && !_set[0])
+	  if (!words && !_set[0])
 	    return true;
 	}
       return false;
@@ -525,7 +545,7 @@ namespace Mabit
     }
 
     /**
-     **	\brief
+     ** \brief
      ** Returns the number of representative words
      */
     msize_t			used_words() const
@@ -535,22 +555,25 @@ namespace Mabit
       for (auto i = _set.rbegin(); i != _set.rend() && ret > 0; ++i, --ret)
 	if ((_sign && *i != 0) || (!_sign && *i != WORD_MAX))
 	  break ;
-			
+
       if (!_sign)
 	{
+	  // Make ret an index for _set
 	  if (ret)
-	    --ret;		// Make ret an index for _set
+	    --ret;
 
-	  if (!_set[ret])	// If 0
-	    ++ret;		// Add 1 to the final result
+	  // If last bit equals 0 then add 1 to the final result
+	  if (!get_bit(_set[ret], _set.BITS_IN_WORD - 1))
+	    ++ret;
 
-	  ++ret;		// transform index to real number
+	  // transform index to real number
+	  ++ret;
 	}
       return ret;
     }
 
     /**
-     **	\brief
+     ** \brief
      ** Returns the number of representative bits
      */
     msize_t			used_bits() const
@@ -573,86 +596,8 @@ namespace Mabit
       return ++bit;
     }
 
-    std::string			to_string(base_t format, const char sep = 0) const
-    {
-      std::string		ret;
-
-      if (format == BIN)
-	{
-	  if (!_sign)
-	    ret += '-';
-
-	  msize_t		words = used_words();
-			
-	  if (!words)
-	    {
-	      for (msize_t i = 0; i < _set.BITS_IN_WORD; ++i)
-		ret += '0';
-	      return ret;
-	    }
-
-	  bool			first = true;
-	  word_t		simulated_abs;
-
-	  for (; words > 0; --words)
-	    {
-	      simulated_abs = simulate_abs(words - 1);
-
-	      if (first && !simulated_abs)
-		{
-		  first = false;
-		  continue ;
-		}
-
-	      for (msize_t offset = 0; offset < _set.BITS_IN_WORD; ++offset)
-		ret += !get_bit(simulated_abs, _set.BITS_IN_WORD - 1 - offset) ? '0' : '1';
-
-	      if (sep && words > 1)
-		ret += sep;
-
-	      first = false;
-	    }
-	}
-      else if (format == DEC)
-	{
-	  ret = '0';
-
-	  word_t		simulated_abs;
-
-	  for (msize_t words = used_words(); words > 0; --words)
-	    {
-	      simulated_abs = simulate_abs(words - 1);
-
-	      for (msize_t i = 0; i < _set.BITS_IN_WORD; ++i)
-		{
-		  multiply_string_by(ret, 2);
-		  if (get_bit(simulated_abs, _set.BITS_IN_WORD - 1 - i))
-		    add_one_to_string(ret, 0);
-		}
-	    }
-	  if (sep)
-	    {
-	      std::string	ret2 = "";
-
-	      for (size_t i = 0; i < ret.length(); ++i)
-		{
-		  ret2 += ret[i];
-		  if (i && (i % 3) == 2 && i != ret.length() - 1)
-		    ret2 += sep;
-		}
-	      ret = ret2;
-	    }
-	  if (!_sign)
-	    ret += '-';
-
-	  std::reverse(ret.begin(), ret.end());
-	}
-      return ret;
-    }
-
-
     /**
-     **	\brief
+     ** \brief
      ** Returns the absolute value at position `at`
      ** If mabit is positive, it just returns the value stored at `at`
      ** If negative, it calculates the value as if mabit were positive
@@ -668,29 +613,80 @@ namespace Mabit
      **	\brief
      ** Returns the value at position `at` of the bitset if mabit were the opposite of itself
      */
-    word_t			simulate_opposite(const msize_t at) const
+    word_t                      simulate_opposite(const msize_t at) const
     {
-      unsigned long long	tmp = 0;
-      word_t			rest = 1;
+      unsigned long long        tmp = 1;
 
       for (msize_t i = 0; i < at; ++i)
 	{
-	  tmp = static_cast<word_t>(~_set[i]) + rest;
+	  tmp += static_cast<word_t>(~_set[i]);
 
 	  if (tmp <= WORD_MAX)
-	    {
-	      if (i == at)
-		return static_cast<word_t>(tmp);
-	      return ~_set[at];
-	    }
-	  rest = static_cast<word_t>(tmp - WORD_MAX);
+	    return ~_set[at];
+
+	  tmp >>= _set.BITS_IN_WORD;
 	}
-      return ~_set[at] + rest;
+      return tmp += static_cast<word_t>(~_set[at]);
     }
 
-  private:
-    set_t			_set;
-    bool			_sign;
+    mabit_t&			operator << (std::istream& in)
+    {
+      static const msize_t	ratio = sizeof(word_t) / sizeof(char);
+      size_t			length = 0;
+      msize_t			pos = 0;
+
+      in.seekg(0, in.end);
+      length = in.tellg();
+
+      msize_t			limit = length / ratio + (!(length % ratio) ? 0 : 1);
+
+      resize(limit);
+      clear();
+
+      in.seekg(0, in.beg);
+
+      while (length > 0)
+	{
+	  size_t	buf_size = std::min(static_cast<size_t>(1024), length);
+	  char		buf[buf_size];
+	  msize_t	tmp = 0;
+
+	  in.read(buf, buf_size);
+
+	  for (size_t i = 0; i < buf_size; ++i)
+	    {
+	      const word_t at = static_cast<unsigned char>(buf[i]);
+
+	      _set[pos] |= (at << (tmp++ * sizeof(char) * 8));
+
+	      if (i % ratio == ratio - 1)
+		{
+		  ++pos;
+		  tmp = 0;
+		}
+	    }
+	  length -= buf_size;
+	}
+      return *this;
+    }
+
+    void			operator >> (std::ostream& out) const
+    {
+      static const msize_t	ratio = sizeof(word_t) / sizeof(char);
+      static const msize_t	offset = sizeof(char) * 8;
+      static const word_t	mask = static_cast<unsigned char>(~0);
+      const msize_t		bits = used_bits();
+      const msize_t		chars = bits / offset + (!(bits % offset) ? 0 : 1);
+      msize_t			char_count = 0;
+
+      for (auto i = _set.begin(); i != _set.end(); ++i)
+	for (msize_t j = 0; j < ratio; ++j)
+	  {
+	    if (char_count < chars)
+	      out << static_cast<char>((*i & (mask << (j * offset))) >> (j * offset));
+	    char_count += 1;
+	  }
+    }
 
     /**
      **	\brief
@@ -705,7 +701,7 @@ namespace Mabit
      **	\brief
      ** Add `val` into the bitset, at the specific location `from`
      ** Affects all the words needed above its position
-     ** 
+     **
      ** \param from : word position
      ** \param val  : the value to be added
      ** \param auto_resize : indicates whether or not it should resize mabit to store everything
@@ -737,39 +733,50 @@ namespace Mabit
 	}
     }
 
+  private:
+    bool			_sign;
+    set_t			_set;
+
+    friend class		mabit_stream<word_t>;
+
     /**
      **	\brief
      ** Returns the sign after the addition of ourself with `other`
      */
-    bool			sign_add(const mabit_t& other, const bool add_or_sub) const
+    bool			sign_add(const mabit_t& a, const mabit_t& b, const bool add_or_sub) const
     {
       // (+ + +) OR (- + -)
-      if (add_or_sub && _sign == other._sign)
-	return _sign;
+      if (add_or_sub && a._sign == b._sign)
+	return a._sign;
       // (+ - -)
-      if (!add_or_sub && _sign && !other._sign)
+      if (!add_or_sub && a._sign && !b._sign)
 	return true;
       // (- - +)
-      if (!add_or_sub && !_sign && other._sign)
+      if (!add_or_sub && !a._sign && b._sign)
 	return false;
 
-      const msize_t		bits = used_bits();
-      const msize_t		other_bits = other.used_bits();
+      const msize_t		a_bits = a.used_bits();
+      const msize_t		b_bits = b.used_bits();
 
-      if (!other_bits || bits > other_bits)
-	return _sign;
-      if (!bits || bits < other_bits)
-	return add_or_sub ? other._sign : !other._sign;
+      if (!a_bits && !b_bits)
+	return true;
 
-      for (msize_t i = word_ceil(bits); i > 0; --i)
+      if (a_bits > b_bits)
+	return a._sign;
+
+      if (a_bits < b_bits)
+	return add_or_sub ? b._sign : !b._sign;
+
+      for (msize_t i = word_ceil(a_bits); i > 0; --i)
 	{
-	  const word_t		a = simulate_abs(i - 1);
-	  const word_t		b = other.simulate_abs(i - 1);
+	  const word_t		a_abs = a.simulate_abs(i - 1);
+	  const word_t		b_abs = b.simulate_abs(i - 1);
 
-	  if (a < b)
-	    return add_or_sub ? other._sign : !other._sign;
-	  else if (a > b)
-	    return _sign;
+	  if (a_abs > b_abs)
+	    return a._sign;
+
+	  if (a_abs < b_abs)
+	    return add_or_sub ? b._sign : !b._sign;
 	}
       return true;
     }
@@ -792,10 +799,10 @@ namespace Mabit
 
       result.resize(word_ceil(std::max(r_bits, o_bits) + 1));
 
-      result._sign = result.sign_add(other, add_or_sub);
+      result._sign = sign_add(*this, other, add_or_sub);
 
       for (; i < o_words; ++i)
-	add_or_sub ? result.add(i, other._set[i]) : result.add(i, other.simulate_opposite(i));
+	result.add(i, add_or_sub ? other._set[i] : other.simulate_opposite(i));
 
       if (((add_or_sub && !other._sign) || (!add_or_sub && other._sign)) && o_words < result._set.size())
 	for (; i < result._set.size(); ++i)
@@ -825,7 +832,7 @@ namespace Mabit
 	}
 
       const msize_t		words_needed = word_ceil(r_bits + o_bits);
-      
+
       // For optimization purpose only
       if (other.is_power_of_2())
 	{
@@ -840,16 +847,14 @@ namespace Mabit
 
 	  if (!result._sign)
 	    result.negate();
-				
+
 	  result.resize(words_needed);
 	  result <<= (r_bits - 1);
 	  return ;
 	}
-      		
+
       const msize_t		o_words = word_ceil(o_bits);
       mabit_t			tmp_result(result);
-      msize_t			last_offset = 0;
-      msize_t			current_offset = 0;
 
       result.clear();
       result.resize(words_needed);
@@ -857,20 +862,13 @@ namespace Mabit
 
       for (msize_t i = 0; i < o_words; ++i)
 	{
-	  word_t		mask = 1;
-	  const word_t		other_simulated_abs = other.simulate_abs(i);
+	  const msize_t		o_simulated_abs = other.simulate_abs(i);
 
-	  for (msize_t j = 0; j < _set.BITS_IN_WORD; ++j)
-	    {
-	      if (other_simulated_abs & mask)
-		{
-		  tmp_result <<= (current_offset - last_offset);
-		  result += tmp_result;
-		  last_offset = current_offset;
-		}
-	      mask <<= 1;
-	      ++current_offset;
-	    }
+	  if (i)
+	    tmp_result <<= _set.BITS_IN_WORD;
+
+	  for (msize_t j = 0; j < words_needed; ++j)
+	    result.add(j, o_simulated_abs * tmp_result[j]);
 	}
     }
 
@@ -888,21 +886,21 @@ namespace Mabit
       if (!divisor.any())
 	return ;
 	//throw std::exception("Mabit: Division by zero");
-			
+
       // For optimization purpose only
       if (div_or_mod && divisor.is_power_of_2())
-	{ 
+	{
 	  dividend >>= (divisor.used_bits() - 1);
 	  return ;
 	}
 
-      mabit_t			tmpdividend(dividend);
+      mabit_t			remainder(dividend);
       mabit_t			tmpdivisor;
       msize_t			quotient_shift;
 
-      // Calculates the secure size for tmpdividend and quotient
-      // so that left shifting the bits of these 2 will always return the expected value
-      const msize_t		secure_size = word_ceil(tmpdividend.used_bits() + 1);
+      // Calculates the secure size for tmpdivisor
+      // so that left shifting its bits will always return the expected value
+      const msize_t		secure_size = word_ceil(remainder.used_bits() + 1);
 
       tmpdivisor.resize(secure_size);
 
@@ -912,94 +910,50 @@ namespace Mabit
       while (true)
 	{
 	  // Division without rest
-	  if (tmpdividend == divisor)
+	  if (remainder == divisor)
 	    {
 	      // Sets the result to 0 if the operation is modulo, or adds 1 to the final result of division
 	      div_or_mod ? dividend.add(0, 1) : dividend.clear();
 	      return ;
 	    }
 
-	  // Dividend is smaller than divisor, cannot divide anymore
-	  if (tmpdividend < divisor)
+	  // Remainder is smaller than divisor, cannot divide anymore
+	  if (remainder < divisor)
 	    {
 	      // Stores either the result of modulo or division
-	      dividend = div_or_mod ? dividend : tmpdividend;
+	      dividend = div_or_mod ? dividend : remainder;
 	      return ;
 	    }
 
-	  const msize_t		tmpdividend_bits = tmpdividend.used_bits();
+	  const msize_t		tmpdividend_bits = remainder.used_bits();
 
 	  // Sets tmpdivisor to real divisor
 	  tmpdivisor = divisor;
 
 	  tmpdivisor.resize(word_ceil(tmpdividend_bits + 1));
-				
+
 	  // Calculates quotient_shift
 	  quotient_shift = tmpdividend_bits - divisor.used_bits();
 
 	  if (quotient_shift > 0)
 	    --quotient_shift;
 
-	  // Makes tmpdivisor the highest divisor possible for tmpdividend
+	  // Makes tmpdivisor the highest divisor possible for remainder
 	  tmpdivisor <<= quotient_shift;
 
-	  if (tmpdivisor > tmpdividend)
+	  if (tmpdivisor > remainder)
 	    tmpdivisor >>= 1;
 
-	  // Adds quotient to final result (quotient is a multiple of 2, so a simple addition into the wright sector is enough)
-	  dividend.add(quotient_shift / _set.BITS_IN_WORD, 1UL << (quotient_shift % _set.BITS_IN_WORD));
+	  // Adds quotient to final result (quotient is a multiple of 2, so a simple addition into the right sector is enough)
+	  dividend.add(quotient_shift / _set.BITS_IN_WORD, 1ULL << (quotient_shift % _set.BITS_IN_WORD));
 
-	  // Subtracts the highest divisor found to the current dividend
-	  tmpdividend -= tmpdivisor;
+	  // Subtracts the highest divisor found to the remainder
+	  remainder -= tmpdivisor;
 	}
-    }
-
-    void			add_one_to_string(std::string& dec, size_t i) const
-    {
-      for (; i < dec.length(); ++i)
-	{
-	  if (dec[i] < '9')
-	    {
-	      dec[i] += 1;
-	      return ;
-	    }
-	  dec[i] = '0';
-	}
-      dec += '1';
-    }
-
-    void			multiply_string_by(std::string& nb, unsigned int mult_by) const
-    {
-      std::string		ret("0");
-      const size_t		nb_length = nb.length();
-
-      for (size_t i = 0; i < nb_length; ++i)
-	{
-	  unsigned int		add_how_much = (nb[i] - '0') * mult_by;
-
-	  if (!add_how_much && i < nb_length - 1)
-	    ret += '0';
-
-	  for (; add_how_much > 0; --add_how_much)
-	    add_one_to_string(ret, i);
-	}
-      nb = ret;
     }
   };
 }
 
-template<class Ch, class Tr, class word_type>
-std::basic_ostream<Ch, Tr>&	operator << (std::basic_ostream<Ch, Tr>& s, const Mabit::mabit<word_type>& obj)
-{
-  char separator = std::use_facet<std::numpunct<char> >(s.getloc()).thousands_sep();
-
-  std::ios_base::fmtflags flags = s.flags();
-
-  if (flags & std::ios_base::dec)
-    s << obj.to_string(Mabit::DEC, separator);
-  else
-    s << obj.to_string(Mabit::BIN, ' ');
-  return s;
-}
+#include "mabit_stream.hpp"
 
 #endif // !MABIT_HPP

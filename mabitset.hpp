@@ -1,179 +1,162 @@
 #ifndef MABITSET_HPP
-#define MABTISET_HPP
+#define MABITSET_HPP
 
-#include <algorithm>
-#include <cstddef>
+#include <algorithm>					// std::fill, std::for_each
+#include <utility>					// std::forward
+#include <vector>
 #include "mabit_traits.hpp"
 
 namespace Mabit
 {
   template<typename word_t>
-  class mabitset
+  class mabitset : public std::vector<word_t>
   {
   public:
-    typedef typename mabit_traits<word_t>::word_c	word_c;
-    typedef typename mabit_traits<word_t>::word_p	word_p;
-    typedef typename mabit_traits<word_t>::word_cp	word_cp;
+    typedef typename mabit_traits<word_t>::msize_t	msize_t;
     typedef typename mabit_traits<word_t>::word_r	word_r;
     typedef typename mabit_traits<word_t>::word_cr	word_cr;
-    typedef typename mabit_traits<word_t>::r_word_p	r_word_p;
-    typedef typename mabit_traits<word_t>::r_word_cp	r_word_cp;
-    typedef typename mabit_traits<word_t>::msize_t	msize_t;
 
+    typedef std::vector<word_t>				container_t;
     typedef mabitset<word_t>				mabitset_t;
 
-    mabitset() : _real_size(0), _size(0), _set(nullptr)
+    static const msize_t				BITS_IN_WORD = sizeof(word_t) * 8;
+
+    mabitset() : container_t()
     {
     }
 
-    mabitset(const mabitset_t& other) : _real_size(0), _size(0), _set(nullptr)
+    mabitset(const mabitset_t& other) : container_t(other)
     {
-      resize(other._size);
-
-      for (msize_t i = 0; i < other._size; ++i)
-	_set[i] = other._set[i];
     }
 
-    mabitset(mabitset_t&& other) : _real_size(other._real_size), _size(other._size), _set(std::move(other._set))
+    mabitset(mabitset_t&& other) : container_t(std::forward<container_t>(other))
     {
-      other._set = nullptr;
     }
 
-    virtual ~mabitset()
-    {
-      if (_set != nullptr)
-	{
-	  delete[] _set;
-	  _set = nullptr;
-	}
-    }
-
-    mabitset_t&	operator = (const mabitset_t& other)
+    mabitset_t&		operator = (const mabitset_t& other)
     {
       if (this != &other)
-	{
-	  resize(other._size);
-
-	  for (msize_t i = 0; i < other._size; ++i)
-	    _set[i] = other._set[i];
-	}
+	container_t::operator = (other);
       return *this;
     }
 
-    mabitset_t&	operator = (mabitset_t&& other)
+    mabitset_t&		operator = (mabitset_t&& other)
     {
       if (this != &other)
-	{
-	  if (_set != nullptr)
-	    delete[] _set;
-
-	  _real_size = other._real_size;
-	  _size = other._size;
-	  _set = std::move(other._set);
-	  other._set = nullptr;
-	}
+	container_t::operator = (std::forward<container_t>(other));
       return *this;
     }
 
-    word_p	begin()
+    mabitset_t&		operator &= (const mabitset_t& other)
     {
-      return _set;
+      apply(*this, other, [] (word_r a, word_cr b) { a &= b; });
+      sanitize(other.size());
+      return *this;
     }
 
-    word_p	end()
+    mabitset_t&		operator |= (const mabitset_t& other)
     {
-      return _set + _size;
+      apply(*this, other, [] (word_r a, word_cr b) { a |= b; });
+      sanitize(other.size());
+      return *this;
     }
 
-    word_cp	begin() const
+    mabitset_t&		operator ^= (const mabitset_t& other)
     {
-      return _set;
+      apply(*this, other, [] (word_r a, word_cr b) { a ^= b; });
+      sanitize(other.size());
+      return *this;
     }
 
-    word_cp	end() const
+    mabitset_t&		operator <<= (const msize_t shift)
     {
-      return _set + _size;
-    }
+      if (!shift)
+	return *this;
 
-    r_word_p	rbegin()
-    {
-      return r_word_p(end());
-    }
-
-    r_word_p	rend()
-    {
-      return r_word_p(begin());
-    }
-
-    r_word_cp	rbegin() const
-    {
-      return r_word_cp(end());
-    }
-
-    r_word_cp	rend() const
-    {
-      return r_word_cp(begin());
-    }
-
-    word_r	operator [] (const msize_t at)
-    {
-      return _set[at];
-    }
-
-    word_cr	operator [] (const msize_t at) const
-    {
-      return _set[at];
-    }
-
-    msize_t	size() const
-    {
-      return _size;
-    }
-
-    void	resize(const msize_t size, word_c init_val = 0)
-    {
-      if (_real_size >= size)
+      if (shift >= this->size() * BITS_IN_WORD)
 	{
-	  if (_size < size)
-	    std::fill(_set + _size, _set + size, init_val);
-	  _size = size;
-	  return ;
+	  fill(0);
+	  return *this;
 	}
 
-      msize_t	i	= 0;
-      word_p	set	= new word_t[size];
+      const msize_t	block_shift = shift / BITS_IN_WORD;
+      const msize_t	offset = shift % BITS_IN_WORD;
 
-      if (_set != nullptr)
+      if (!offset)
+	for (msize_t i = this->size() - 1; i >= block_shift; --i)
+	  (*this)[i] = (*this)[i - block_shift];
+      else
 	{
-	  msize_t	limit = std::min(_size, size);
+	  const msize_t	sub_offset = BITS_IN_WORD - offset;
 
-	  for (; i < limit; ++i)
-	    set[i] = _set[i];
-
-	  delete[] _set;
+	  for (msize_t i = this->size() - 1; i > block_shift; --i)
+	    (*this)[i] = ((*this)[i - block_shift] << offset) | ((*this)[i - block_shift - 1] >> sub_offset);
+	  (*this)[block_shift] = (*this)[0] << offset;
 	}
-      for (; i < size; ++i)
-	set[i] = init_val;
-
-      _size = size;
-      _real_size = size;
-      _set = set;
+      std::fill(this->begin(), this->begin() + block_shift, 0);
+      return *this;
     }
 
-    void	fill(word_c val)
+    mabitset_t&		operator >>= (const msize_t shift)
     {
-      std::fill(_set, _set + _size, val);
+      if (!shift)
+	return *this;
+
+      if (shift >= this->size() * BITS_IN_WORD)
+	{
+	  fill(0);
+	  return *this;
+	}
+
+      const msize_t	block_shift = shift / BITS_IN_WORD;
+      const msize_t	offset = shift % BITS_IN_WORD;
+      msize_t		limit = this->size() - block_shift;
+
+      if (limit)
+	--limit;
+
+      if (!offset)
+	for (msize_t i = 0; i <= limit; ++i)
+	  (*this)[i] = (*this)[i + block_shift];
+      else
+	{
+	  const msize_t	sub_offset = BITS_IN_WORD - offset;
+
+	  for (msize_t i = 0; i < limit; ++i)
+	    (*this)[i] = ((*this)[i + block_shift] >> offset) | ((*this)[i + block_shift + 1] << sub_offset);
+	  (*this)[limit] = (*this)[this->size() - 1] >> offset;
+	}
+      std::fill(this->begin() + limit + 1, this->end(), 0);
+      return *this;
     }
 
-    bool	is_empty() const
+    void		flip()
     {
-      return !_size;
+      for (auto& w : *this)
+	w = ~w;
     }
 
-  protected:
-    msize_t	_real_size;
-    msize_t	_size;
-    word_p	_set;
+    void		fill(word_cr val)
+    {
+      std::fill(this->begin(), this->end(), val);
+    }
+
+  private:
+    template<typename Container, typename Function>
+    void		apply(Container& a, const Container& b, Function f)
+    {
+      auto		aItr = a.begin();
+      auto		bItr = b.begin();
+
+      for (; aItr != a.end() && bItr != b.end(); ++aItr, ++bItr)
+	f(*aItr, *bItr);
+    }
+
+    void		sanitize(const msize_t from)
+    {
+      if (from < this->size())
+	std::for_each(this->begin() + from, this->end(), [] (word_r w) { w = 0; });
+    }
   };
 }
 
