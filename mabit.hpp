@@ -128,19 +128,9 @@ namespace Mabit
       if (!words && !o_words)
 	return true;
 
-<<<<<<< HEAD
       if ((!_sign && words > o_words) || (_sign && words < o_words))
 	return true;
 
-=======
-      // If we are both negative and i have more words than the other, then i'm smaller than him
-      // Or if we are both positive and i have less words than the other, then i'm smaller than him
-      if ((!_sign && words > o_words) || (_sign && words < o_words))
-	return true;
-
-      // If we are both negative and i have less words than the other, then i'm bigger than him
-      // Or if we are both positive and i have more words than the other, then i'm bigger than him
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
       if ((!_sign && words < o_words) || (_sign && words > o_words))
 	return false;
 
@@ -565,11 +555,7 @@ namespace Mabit
       for (auto i = _set.rbegin(); i != _set.rend() && ret > 0; ++i, --ret)
 	if ((_sign && *i != 0) || (!_sign && *i != WORD_MAX))
 	  break ;
-<<<<<<< HEAD
 
-=======
-	
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
       if (!_sign)
 	{
 	  // Make ret an index for _set
@@ -684,60 +670,6 @@ namespace Mabit
       return *this;
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     ** \brief
-     ** Inserts a stream inside mabit
-     ** \param in : a valid std::istream
-     */
-    mabit_t&			operator << (std::istream& in)
-    {
-      static const msize_t	ratio = sizeof(word_t) / sizeof(char);
-      size_t			length = 0;
-      msize_t			pos = 0;
-
-      in.seekg(0, in.end);
-      length = in.tellg();
-
-      msize_t			limit = length / ratio + (!(length % ratio) ? 0 : 1);
-
-      resize(limit);
-      clear();
-
-      in.seekg(0, in.beg);
-
-      while (length > 0)
-	{
-	  size_t	buf_size = std::min(static_cast<size_t>(1024), length);
-	  char		buf[buf_size];
-	  msize_t	tmp = 0;
-
-	  in.read(buf, buf_size);
-
-	  for (size_t i = 0; i < buf_size; ++i)
-	    {
-	      const word_t at = static_cast<unsigned char>(buf[i]);
-
-	      _set[pos] |= (at << (tmp++ * sizeof(char) * 8));
-
-	      if (i % ratio == ratio - 1)
-		{
-		  ++pos;
-		  tmp = 0;
-		}
-	    }
-	  length -= buf_size;
-	}
-      return *this;
-    }
-
-    /**
-     ** \brief
-     ** Extracts the content of mabit to an output stream
-     ** \param out : a valid std::ostream
-     */
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
     void			operator >> (std::ostream& out) const
     {
       static const msize_t	ratio = sizeof(word_t) / sizeof(char);
@@ -755,15 +687,6 @@ namespace Mabit
 	    char_count += 1;
 	  }
     }
-<<<<<<< HEAD
-=======
-
-  private:
-    bool			_sign;
-    set_t			_set;
-
-    friend class		mabit_stream<word_t>;
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
 
     /**
      **	\brief
@@ -776,7 +699,7 @@ namespace Mabit
 
     /**
      **	\brief
-     ** Add `val` into the bitset (handles the carry), at the specific location `from`
+     ** Add `val` into the bitset, at the specific location `from`
      ** Affects all the words needed above its position
      **
      ** \param from : word position
@@ -848,17 +771,10 @@ namespace Mabit
 	{
 	  const word_t		a_abs = a.simulate_abs(i - 1);
 	  const word_t		b_abs = b.simulate_abs(i - 1);
-<<<<<<< HEAD
 
 	  if (a_abs > b_abs)
 	    return a._sign;
 
-=======
-
-	  if (a_abs > b_abs)
-	    return a._sign;
-
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	  if (a_abs < b_abs)
 	    return add_or_sub ? b._sign : !b._sign;
 	}
@@ -915,11 +831,7 @@ namespace Mabit
 	  return ;
 	}
 
-<<<<<<< HEAD
       const msize_t		words_needed = word_ceil(r_bits + o_bits);
-=======
-      const msize_t		words_needed = word_ceil(r_bits + o_bits) + 1;
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
 
       // For optimization purpose only
       if (other.is_power_of_2())
@@ -952,18 +864,11 @@ namespace Mabit
 	{
 	  const msize_t		o_simulated_abs = other.simulate_abs(i);
 
-<<<<<<< HEAD
 	  if (i)
 	    tmp_result <<= _set.BITS_IN_WORD;
 
 	  for (msize_t j = 0; j < words_needed; ++j)
 	    result.add(j, o_simulated_abs * tmp_result[j]);
-=======
-	  tmp_result <<= (i * _set.BITS_IN_WORD);
-
-	  for (msize_t j = 0; j < words_needed; ++j)
-	    result.add(j, tmp_result[j] * o_simulated_abs);
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	}
     }
 
@@ -1040,20 +945,12 @@ namespace Mabit
 	    tmpdivisor >>= 1;
 
 	  // Adds quotient to final result (quotient is a multiple of 2, so a simple addition into the right sector is enough)
-<<<<<<< HEAD
 	  dividend.add(quotient_shift / _set.BITS_IN_WORD, 1ULL << (quotient_shift % _set.BITS_IN_WORD));
-=======
-	  dividend.add(quotient_shift / _set.BITS_IN_WORD, 1UL << (quotient_shift % _set.BITS_IN_WORD));
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
 
 	  // Subtracts the highest divisor found to the remainder
 	  remainder -= tmpdivisor;
 	}
-<<<<<<< HEAD
     }
-=======
-    }    
->>>>>>> e645cf273a9159a771fe34705030967efd61e262
   };
 }
 
