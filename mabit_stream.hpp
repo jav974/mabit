@@ -2,12 +2,18 @@
 #define MABIT_STREAM_HPP
 
 #include <iostream>
+<<<<<<< HEAD
 #include <sstream>
 #include <cstdlib>
 #include <string>
 #include <vector>
 #include <utility>
 #include <algorithm>
+=======
+#include <string>
+#include <vector>
+#include <utility>
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
 #include "mabit_traits.hpp"
 #include "mabit.hpp"
 
@@ -51,15 +57,24 @@ namespace Mabit
 
       if (!nb._sign)
 	ret += '-';
+<<<<<<< HEAD
 
       msize_t		words = nb.used_words();
 
+=======
+	  
+      msize_t		words = nb.used_words();
+      
+      ret.resize(words * nb._set.BITS_IN_WORD + 1);
+      
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
       if (!words)
 	{
 	  for (msize_t i = 0; i < nb._set.BITS_IN_WORD; ++i)
 	    ret += '0';
 	  return ret;
 	}
+<<<<<<< HEAD
 
       bool		first = true;
       word_t		simulated_abs;
@@ -68,11 +83,22 @@ namespace Mabit
 	{
 	  simulated_abs = nb.simulate_abs(words - 1);
 
+=======
+      
+      bool		first = true;
+      word_t		simulated_abs;
+      
+      for (; words > 0; --words)
+	{
+	  simulated_abs = nb.simulate_abs(words - 1);
+	  
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	  if (first && !simulated_abs)
 	    {
 	      first = false;
 	      continue ;
 	    }
+<<<<<<< HEAD
 
 	  for (msize_t offset = 0; offset < nb._set.BITS_IN_WORD; ++offset)
 	    ret += !nb.get_bit(simulated_abs, nb._set.BITS_IN_WORD - 1 - offset) ? '0' : '1';
@@ -80,11 +106,24 @@ namespace Mabit
 	  if (sep && words > 1)
 	    ret += sep;
 
+=======
+	  
+	  for (msize_t offset = 0; offset < nb._set.BITS_IN_WORD; ++offset)
+	    ret += !nb.get_bit(simulated_abs, nb._set.BITS_IN_WORD - 1 - offset) ? '0' : '1';
+	  
+	  if (sep && words > 1)
+	    ret += sep;
+	  
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	  first = false;
 	}
       return ret;
     }
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
     static std::string	to_oct(const mabit_t& nb, const char sep)
     {
       std::vector<char>	tmp;
@@ -95,7 +134,11 @@ namespace Mabit
 
       return ret;
     }
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
     static std::string	to_dec(const mabit_t& nb, const char sep)
     {
       std::vector<char>	tmp;
@@ -132,7 +175,11 @@ namespace Mabit
 	    {
 	      mult_by(ret, 2, base);
 	      if (data.get_bit(abs, data._set.BITS_IN_WORD - 1 - j))
+<<<<<<< HEAD
 		add_one(ret, 0, base, 1);
+=======
+		add_one(ret, 0, base);
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	    }
 	}
     }
@@ -147,6 +194,11 @@ namespace Mabit
      const base_t base
      )
     {
+<<<<<<< HEAD
+=======
+      ret.resize(nb.size() + nb.size() / delimit_pos);
+
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
       for (size_t i = 0; i < nb.size(); ++i)
 	{
 	  char a = nb[i];
@@ -162,7 +214,11 @@ namespace Mabit
       std::reverse(ret.begin(), ret.end());
     }
 
+<<<<<<< HEAD
     static void		add_one(std::vector<char>& nb, size_t i, const base_t base, int to_add = 1)
+=======
+    static void		add_one(std::vector<char>& nb, size_t i, const base_t base)
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
     {
       const char	limit = (static_cast<int>(base) - 1);
 
@@ -191,7 +247,11 @@ namespace Mabit
 	    ret.push_back(0);
 
 	  for (; add_how_much > 0; --add_how_much)
+<<<<<<< HEAD
 	    add_one(ret, i, base, add_how_much);
+=======
+	    add_one(ret, i, base);
+>>>>>>> e645cf273a9159a771fe34705030967efd61e262
 	}
       nb = std::move(ret);
     }
