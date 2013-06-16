@@ -20,8 +20,6 @@ namespace Mabit
     static_assert(sizeof(word_t) < sizeof(unsigned long long), "Mabit: sizeof `word_t` should be < 64 bits");
 
     typedef typename mabit_traits<word_t>::msize_t	msize_t;
-    typedef typename mabit_traits<word_t>::word_r	word_r;
-    typedef typename mabit_traits<word_t>::word_cr	word_cr;
 
     typedef mabit<word_t>				mabit_t;
     typedef mabitset<word_t>				set_t;
@@ -207,7 +205,7 @@ namespace Mabit
       if (!_sign)
 	negate();
 
-      multiplication(*this, other);
+      multiplication(*this, std::forward<mabit_t>(other.abs()));
 
       if (!final_sign)
 	negate();
@@ -227,11 +225,7 @@ namespace Mabit
       if (!_sign)
 	negate();
 
-      if (!other._sign)
-	division(*this, other.abs(), true);
-      else
-	// Avoids an useless copy of other if already positive
-	division(*this, other, true);
+      division(*this, std::forward<mabit_t>(other.abs()), true);
 
       if (!final_sign)
 	negate();
@@ -251,11 +245,7 @@ namespace Mabit
       if (!_sign)
 	negate();
 
-      if (!other._sign)
-	division(*this, other.abs(), false);
-      else
-	// Avoids an useless copy of other if already positive
-	division(*this, other, false);
+      division(*this, std::forward<mabit_t>(other.abs()), false);
 
       if (!final_sign)
 	negate();
@@ -271,12 +261,12 @@ namespace Mabit
     /************************************************************************/
     /* WORD ACCESS OPERATOR  []                                             */
     /************************************************************************/
-    word_r			operator [] (const msize_t at)
+    word_t&			operator [] (const msize_t at)
     {
       return _set[at];
     }
 
-    word_cr			operator [] (const msize_t at) const
+    const word_t&		operator [] (const msize_t at) const
     {
       return _set[at];
     }
@@ -787,6 +777,26 @@ namespace Mabit
      */
     void			addition(mabit_t& result, const mabit_t& other, const bool add_or_sub) const
     {
+      if (result == other)
+	{
+	  if (add_or_sub)
+	    {
+	      result.resize(result.word_ceil(result.used_bits() + 1));
+
+	      if (!result._sign)
+		{
+		  result.negate();		  
+		  result <<= 1;
+		  result.negate();
+		}
+	      else
+		result <<= 1;
+	    }
+	  else
+	    result.clear();
+	  return ;
+	}
+
       const msize_t		o_bits = other.used_bits();
 
       if (!o_bits)
@@ -820,7 +830,7 @@ namespace Mabit
      **	\brief
      ** Performs the multiplication of `result` with `other`, stores the result inside `result`
      */
-    void			multiplication(mabit_t& result, const mabit_t& other)
+    void			multiplication(mabit_t& result, const mabit_t&& other) const
     {
       const msize_t		r_bits = result.used_bits();
       const msize_t		o_bits = other.used_bits();
@@ -844,10 +854,6 @@ namespace Mabit
       else if (result.is_power_of_2())
 	{
 	  result = other;
-
-	  if (!result._sign)
-	    result.negate();
-
 	  result.resize(words_needed);
 	  result <<= (r_bits - 1);
 	  return ;
@@ -862,13 +868,11 @@ namespace Mabit
 
       for (msize_t i = 0; i < o_words; ++i)
 	{
-	  const msize_t		o_simulated_abs = other.simulate_abs(i);
-
 	  if (i)
 	    tmp_result <<= _set.BITS_IN_WORD;
 
 	  for (msize_t j = 0; j < words_needed; ++j)
-	    result.add(j, o_simulated_abs * tmp_result[j]);
+	    result.add(j, static_cast<unsigned long long>(other[i]) * tmp_result[j]);
 	}
     }
 
@@ -876,7 +880,7 @@ namespace Mabit
      **	\brief
      ** Performs the division or modulo of `dividend` with `divisor`, stores the result inside `dividend`
      */
-    void			division(mabit_t& dividend, const mabit_t& divisor, const bool div_or_mod) const
+    void			division(mabit_t& dividend, const mabit_t&& divisor, const bool div_or_mod) const
     {
       // If dividend == 0, then return
       if (!dividend.any())
