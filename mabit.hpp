@@ -56,6 +56,37 @@ namespace Mabit
 	}
     }
 
+    mabit(const std::string& val, const int base = 10)
+    {
+      from_string(val, base);
+    }
+
+    mabit(const char* const val, const int base = 10)
+    {
+      from_string(val, base);
+    }
+
+    void			from_string(const std::string& src, const int base = 10)
+    {
+      clear();
+      resize(MIN_SIZE);
+
+      for (size_t i = src[0] == '-' ? 1 : 0; i < src.length(); ++i)
+	{
+	  char c = src[i];
+
+	  if (c >= '0' && c <= '9')
+	    c -= '0';
+	  else
+	    c = c - 'A' + 10;
+
+	  *this *= base;
+	  *this += c;
+	}
+      if (src[0] == '-')
+	negate();
+    }
+
     ~mabit()
     {
     }
@@ -447,7 +478,7 @@ namespace Mabit
 
     bool			get_bit(const word_t word, const msize_t pos) const
     {
-      return (word & static_cast<word_t>(1UL << pos)) != 0;
+      return (word & (1UL << pos)) != 0;
     }
 
     void			flip()
@@ -722,6 +753,35 @@ namespace Mabit
 	  add(from, val, true);
 	}
     }
+    
+    mabit_t			isqrt() const
+    {
+      mabit_t			rem, root, tmp(*this);
+      const msize_t		words = used_words();
+      const msize_t		ceilb = words * _set.BITS_IN_WORD / 2;
+
+      for (msize_t i = 0; i < ceilb; ++i)
+	{
+	  tmp.resize(words);
+	  rem.resize(words);
+	  root.resize(words);
+
+	  root <<= 1;
+	  rem <<= 2;
+	  rem += (tmp >> (ceilb * 2 - 2));
+	  tmp <<= 2;
+	  ++root;
+
+	  if (root <= rem)
+	    {
+	      rem -= root;
+	      ++root;
+	    }
+	  else
+	    --root;
+	}
+      return root >>= 1;
+    }
 
   private:
     bool			_sign;
@@ -807,7 +867,7 @@ namespace Mabit
       msize_t			r_words = word_ceil(r_bits);
       msize_t			i = 0;
 
-      result.resize(word_ceil(std::max(r_bits, o_bits) + 1));
+      result.resize(result.word_ceil(std::max(r_bits, o_bits) + 1));
 
       result._sign = sign_add(*this, other, add_or_sub);
 
